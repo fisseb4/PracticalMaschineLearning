@@ -1,0 +1,138 @@
+---
+title: "Practical Machine Learning"
+author: "Sebastian Fischer"
+date: "22 Mai 2018"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+setwd("/home/pseudo/Desktop/Coursera/Practical_maschine_learning/week4")
+library("knitr")
+library("caret")
+library(corrplot)
+set.seed(12345)
+```
+
+# 1. Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+# 2. Data import and preparation
+
+The training data for this project are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+The data for this project come from this source: http://groupware.les.inf.puc-rio.br/har. If you use the document you create for this class for any purpose please cite them as they have been very generous in allowing their data to be used for this kind of assignment. 
+
+```{r cache=T}
+# Download the data
+training <- read.csv(url("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"))
+testing <- read.csv(url("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"))
+
+# create subset for training data for validation
+
+partTrain <- createDataPartition(training$classe, p=0.7, list=F)
+TrainSet <- training[partTrain, ]
+TestSet <- training[-partTrain, ]
+dim(TrainSet)
+dim(TestSet)
+```
+
+The train and the test subsets consist of 160 variables. Lots of the variables contain NAs or low information content that have to be cleared. Different steps of clearing were performed. 
+
+## Remove NAs
+
+Several variables are empty and contain only NAs which can be removed.
+
+```{r}
+# Remove variables with more than 50% NAs
+
+NAs <- sapply(TrainSet, function(x) mean(is.na(x))) > 0.5
+TrainSet <- TrainSet[, NAs==FALSE]
+TestSet  <- TestSet[, NAs==FALSE]
+dim(TrainSet)
+dim(TestSet)
+```
+
+The number of variables could be decreased to 93.
+
+## Remove Variables with Nearly Zero Variance
+
+Variables with nearly no variance are not helpful in prediction and have to be eliminated.
+
+```{r}
+# Remove NZV
+NZV <- nearZeroVar(TrainSet)
+TrainSet <- TrainSet[, -NZV]
+TestSet <- TestSet[, -NZV]
+dim(TrainSet)
+dim(TestSet)
+```
+The number of variables could be reduced furthermore to 59.
+
+## Remove variables only required for the identification.
+
+The first 5 rows contain variables that are not useful for the prediction.
+
+```{r}
+# Remove identifier
+TrainSet <- TrainSet[, -(1:5)]
+TestSet  <- TestSet[, -(1:5)]
+dim(TrainSet)
+dim(TestSet)
+```
+
+54 informative variables remain for the analysis.
+
+
+# Correlation analysis
+
+Next, it is tested if there are strong correlations between the parameters.
+
+```{r}
+Matrix <- cor(TrainSet[, -54])
+corrplot(Matrix, method = "color", tl.cex = 0.5)
+```
+
+As visible in the plot there are only very few correlations between the variables and it can be assumed that they are independant.
+
+# 3. Building the model
+
+Random forest was selceted for creating the model on the train data set.
+
+```{r cache = TRUE}
+# Building the model
+set.seed(123)
+parameters <- trainControl(method="oob", number=5, verboseIter=FALSE)
+modFitRandForest <- train(classe ~ ., data=TrainSet, method="rf",
+                          trControl=parameters)
+modFitRandForest$finalModel
+```
+
+The estimated OOB error rate is with 0.19% low.
+
+Next, the model is applied to the validation set.
+
+```{r}
+validation <- predict(modFitRandForest , newdata=TestSet)
+confMatrixValidation <- confusionMatrix(validation,TestSet$classe)
+confMatrixValidation
+```
+
+The accurancy is 99.63%. That is a very good result and the model can be used for the 20 test cases. 
+
+# 4. Validation of final data set
+
+```{r}
+final <- predict(modFitRandForest, newdata=testing)
+final
+```
+
